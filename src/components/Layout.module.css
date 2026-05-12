@@ -1,0 +1,44 @@
+.root {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+}
+
+.main {
+  flex: 1;
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.inner {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  animation: fadeUp 360ms var(--ease-out) both;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 1024px) {
+  .main {
+    padding: var(--space-4) var(--space-5) var(--space-5);
+  }
+}
+
+@media (max-width: 720px) {
+  .root {
+    flex-direction: column;
+  }
+  .main {
+    padding: var(--space-4);
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir D:\\\\ko\\\\fun projects\\\\budget and finance app *)",
+      "Bash(del *)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npx vitest *)",
+      "Bash(npx tsc *)",
+      "Bash(npx vite *)",
+      "Bash(npm -v)",
+      "Bash(npm config *)",
+      "Bash(node node_modules/electron/install.js)",
+      "PowerShell(npm install *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\ko\\\\fun projects\\\\budget and finance app\" -Force)",
+      "Bash(Select-Object Name, BaseName, Extension)",
+      "Bash(Format-List)",
+      "Skill(update-config)",
+      "Bash(rm -rf electron/ .github/workflows/release.yml dist/ release/ delete-data.bat reset-data.html start.bat stop.bat vite.err.log vite.out.log tsconfig.node.tsbuildinfo tsconfig.tsbuildinfo)",
+      "Bash(rmdir .github/workflows)",
+      "Bash(rmdir .github)",
+      "Bash(npm uninstall *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(VITE_SUPABASE_URL=http://x VITE_SUPABASE_ANON_KEY=x npx vitest run)",
+      "Bash(VITE_SUPABASE_URL=http://x VITE_SUPABASE_ANON_KEY=x npx vite build)"
+    ],
+    "defaultMode": "bypassPermissions"
+  }
+}

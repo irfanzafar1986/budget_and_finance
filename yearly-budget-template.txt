@@ -1,0 +1,125 @@
+BUDGET AND FINANCE APP WORKFLOW
+===============================
+
+Goal
+----
+The user tracks personal wealth, income, and spending during the year.
+The app does not force predefined expense categories. The user creates
+their own budget categories and assigns calculated expenses to them.
+
+
+YEAR SETUP
+----------
+Year: __________
+User Name: ______________________
+
+The user creates their own yearly budget categories.
+
+Budget Category Name: ______________________
+Yearly Budget Amount: ______________________
+Amount Used: ______________________
+Remaining Budget: ______________________
+
+
+ASSETS AND ACCOUNTS
+-------------------
+The user adds assets and accounts they want to track.
+Examples can include cash, bank accounts, investment accounts, property,
+receivables, or any other asset the user wants to measure.
+
+Asset / Account Name: ______________________
+Asset Type: ______________________
+Opening Balance: ______________________
+Current Balance: ______________________
+Last Updated Date: ______________________
+
+Total Assets at Start of Year: ______________________
+Total Assets at Current Period: ______________________
+
+
+PERIODIC UPDATE
+---------------
+The user periodically enters current balances for all tracked assets,
+cash, and bank accounts.
+
+Period Start Date: ______________________
+Period End Date: ______________________
+
+Previous Total Assets: ______________________
+Current Total Assets: ______________________
+
+
+INCOME ENTRY
+------------
+The user adds income received during the period.
+Income sources are user-created and not predefined by the app.
+
+Income Source Name: ______________________
+Income Amount: ______________________
+Income Date: ______________________
+
+Total Income During Period: ______________________
+
+
+EXPENSE CALCULATION
+-------------------
+The app calculates expenses from the change in assets.
+
+Calculated Expenses =
+Previous Total Assets + Total Income During Period - Current Total Assets
+
+Calculated Expenses: ______________________
+
+Notes:
+- Transfers between the user's own accounts should not be counted as income or expense.
+- If the user buys an asset that is tracked by the app, it should increase assets instead of being treated only as spending.
+- If calculated expenses are negative, the app should ask the user to review balances, income, or missing assets.
+
+
+EXPENSE ASSIGNMENT
+------------------
+After expenses are calculated, the app asks the user to assign the
+calculated expense amount to their own budget categories.
+
+Calculated Expenses to Assign: ______________________
+
+Assigned Category Name: ______________________
+Assigned Amount: ______________________
+
+Total Assigned Expenses: ______________________
+Unassigned Expenses: ______________________
+
+
+BUDGET UPDATE
+-------------
+After the user assigns expenses, the app updates the yearly budget.
+
+Category Name: ______________________
+Yearly Budget: ______________________
+Previous Used Amount: ______________________
+New Assigned Expense: ______________________
+Updated Used Amount: ______________________
+Remaining Budget: ______________________
+
+
+YEAR SUMMARY
+------------
+Total Income This Year: ______________________
+Total Calculated Expenses This Year: ______________________
+Total Assigned Expenses This Year: ______________________
+Total Unassigned Expenses This Year: ______________________
+Total Assets at Start of Year: ______________________
+Total Assets Now: ______________________
+Net Change in Assets: ______________________
+
+
+MAIN USER FLOW
+--------------
+1. User creates budget categories and yearly budget amounts.
+2. User adds assets, cash, bank accounts, and other accounts to track.
+3. User periodically updates balances for all tracked assets.
+4. User enters income received during the period.
+5. App calculates expenses from asset difference and income.
+6. App asks user to assign calculated expenses to user-created categories.
+7. App updates yearly budget usage.
+8. App shows used budget, remaining budget, unassigned expenses, and asset changes.

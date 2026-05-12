@@ -1,0 +1,105 @@
+.wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background:
+    radial-gradient(at 30% 20%, rgba(99, 102, 241, 0.18) 0%, transparent 45%),
+    radial-gradient(at 75% 80%, rgba(34, 211, 238, 0.18) 0%, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(168, 85, 247, 0.08) 0%, transparent 60%),
+    var(--color-bg);
+  position: relative;
+  overflow: hidden;
+}
+
+.wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  pointer-events: none;
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-7) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  animation: rise 480ms var(--ease-out) both;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-6);
+  right: var(--space-6);
+  height: 3px;
+  background: var(--gradient-brand);
+  border-radius: 0 0 var(--radius-pill) var(--radius-pill);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.heading {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.lede {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.error {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-danger-soft);
+  color: var(--color-danger-strong);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.notice {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-info-soft, rgba(59, 130, 246, 0.08));
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
