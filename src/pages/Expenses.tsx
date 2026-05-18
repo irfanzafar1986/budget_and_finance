@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { useApp, useCurrency } from '../state/AppContext';
-import { createCategory, listCategories } from '../db/repos/category';
+import { createCategory, deleteCategory, listCategories } from '../db/repos/category';
 import { useAsyncQuery } from '../lib/useAsyncQuery';
 import { Card } from '../components/Card';
 import { formatMoney, parseAmount } from '../utils/money';
@@ -52,6 +52,24 @@ export function Expenses() {
     );
   }
 
+  function removeDraftRow(id: number) {
+    setDrafts((rows) => rows.filter((row) => row.id !== id));
+    setError(null);
+  }
+
+  async function handleDeleteCategory(category: BudgetCategory) {
+    if (category.is_system) return;
+    const confirmed = window.confirm(`Delete the "${category.name}" expense budget?`);
+    if (!confirmed) return;
+    try {
+      await deleteCategory(category.id);
+      setError(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete expense.');
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (drafts.length === 0) return;
@@ -61,11 +79,13 @@ export function Expenses() {
       const nameCheck = validateName(draft.name, `${rowLabel} expense`);
       if (!nameCheck.ok) return setError(nameCheck.message);
 
-      const parsed = parseAmount(draft.budget, currency);
-      if (parsed === null) return setError(`${rowLabel} budget must be a valid number.`);
+      if (draft.budget.trim() !== '') {
+        const parsed = parseAmount(draft.budget, currency);
+        if (parsed === null) return setError(`${rowLabel} budget must be a valid number.`);
 
-      const amountCheck = validateNonNegativeAmount(parsed, `${rowLabel} budget`);
-      if (!amountCheck.ok) return setError(amountCheck.message);
+        const amountCheck = validateNonNegativeAmount(parsed, `${rowLabel} budget`);
+        if (!amountCheck.ok) return setError(amountCheck.message);
+      }
     }
 
     try {
@@ -73,7 +93,8 @@ export function Expenses() {
         await createCategory({
           yearId,
           name: draft.name,
-          yearlyBudgetAmount: parseAmount(draft.budget, currency) ?? 0,
+          yearlyBudgetAmount:
+            draft.budget.trim() === '' ? 0 : parseAmount(draft.budget, currency) ?? 0,
         });
       }
       setDrafts([]);
@@ -143,7 +164,14 @@ export function Expenses() {
         </Card>
       ) : null}
 
-      <Card title="Expense budgets">
+      <Card
+        title="Expense budgets"
+        actions={
+          <button type="button" className="btn btn-sm" onClick={addDraftRow}>
+            + Add expense
+          </button>
+        }
+      >
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -151,12 +179,13 @@ export function Expenses() {
                 <th>Expense</th>
                 <th className={styles.num}>Yearly budget</th>
                 <th className={styles.num}>Assigned</th>
+                <th className={styles.actionCol}></th>
               </tr>
             </thead>
             <tbody>
               {categories.length === 0 && drafts.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className={styles.empty}>
+                  <td colSpan={4} className={styles.empty}>
                     No expense budgets added yet.
                   </td>
                 </tr>
@@ -171,6 +200,19 @@ export function Expenses() {
                     {formatMoney(category.yearly_budget_amount, currency)}
                   </td>
                   <td className={styles.num}>{formatMoney(category.used_amount, currency)}</td>
+                  <td className={styles.actionCol}>
+                    {category.is_system ? null : (
+                      <button
+                        type="button"
+                        className={styles.iconButton}
+                        onClick={() => void handleDeleteCategory(category)}
+                        aria-label={`Delete ${category.name}`}
+                        title="Delete expense"
+                      >
+                        -
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {drafts.map((draft, index) => (
@@ -199,16 +241,20 @@ export function Expenses() {
                       aria-label={`Expense ${index + 1} yearly budget`}
                     />
                   </td>
-                  <td className={styles.num}>-</td>
+                  <td className={styles.num}>—</td>
+                  <td className={styles.actionCol}>
+                    <button
+                      type="button"
+                      className={styles.iconButton}
+                      onClick={() => removeDraftRow(draft.id)}
+                      aria-label={`Remove expense row ${index + 1}`}
+                      title="Remove row"
+                    >
+                      -
+                    </button>
+                  </td>
                 </tr>
               ))}
-              <tr>
-                <td colSpan={3}>
-                  <button type="button" className="btn" onClick={addDraftRow}>
-                    +
-                  </button>
-                </td>
-              </tr>
             </tbody>
           </table>
         </div>
