@@ -26,6 +26,12 @@ describe('buildBalanceTemplateCsv', () => {
     expect(firstLine).toBe('asset_id,name,asset_type,balance');
   });
 
+  it('emits header row even when there are no assets', () => {
+    const csv = buildBalanceTemplateCsv([], USD);
+    const firstLine = csv.split(/\r?\n/)[0];
+    expect(firstLine).toBe('asset_id,name,asset_type,balance');
+  });
+
   it('includes one row per asset with current balance as plain decimal', () => {
     const assets = [
       makeAsset({ id: 1, name: 'Checking', asset_type: 'Bank', current_balance: 185000 }),

@@ -1,8 +1,14 @@
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { useApp, useCurrency } from '../state/AppContext';
-import { createCategory, deleteCategory, listCategories } from '../db/repos/category';
+import {
+  createCategory,
+  deleteCategory,
+  listCategories,
+  setYearlyBudget,
+} from '../db/repos/category';
 import { useAsyncQuery } from '../lib/useAsyncQuery';
 import { Card } from '../components/Card';
+import { MoneyInput } from '../components/MoneyInput';
 import { formatMoney, parseAmount } from '../utils/money';
 import { validateName, validateNonNegativeAmount } from '../domain/validation';
 import type { BudgetCategory } from '../domain/types';
@@ -18,6 +24,7 @@ export function Expenses() {
   const { year, revision, refresh } = useApp();
   const currency = useCurrency();
   const [drafts, setDrafts] = useState<DraftBudget[]>([]);
+  const [generalBudgetDraft, setGeneralBudgetDraft] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const categories = useAsyncQuery<BudgetCategory[]>(
@@ -28,6 +35,12 @@ export function Expenses() {
 
   if (!year) return null;
   const yearId = year.id;
+
+  const generalCategory = categories.find((c) => c.is_system) ?? null;
+  const generalBudgetDirty =
+    generalBudgetDraft !== null &&
+    generalCategory !== null &&
+    generalBudgetDraft !== generalCategory.yearly_budget_amount;
 
   const yearlyBudget = categories.reduce((sum, category) => sum + category.yearly_budget_amount, 0);
   const used = categories.reduce((sum, category) => sum + category.used_amount, 0);
@@ -72,7 +85,7 @@ export function Expenses() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (drafts.length === 0) return;
+    if (drafts.length === 0 && !generalBudgetDirty) return;
 
     for (const [index, draft] of drafts.entries()) {
       const rowLabel = `Row ${index + 1}`;
@@ -88,6 +101,11 @@ export function Expenses() {
       }
     }
 
+    if (generalBudgetDirty && generalBudgetDraft !== null) {
+      const check = validateNonNegativeAmount(generalBudgetDraft, 'General yearly budget');
+      if (!check.ok) return setError(check.message);
+    }
+
     try {
       for (const draft of drafts) {
         await createCategory({
@@ -97,7 +115,11 @@ export function Expenses() {
             draft.budget.trim() === '' ? 0 : parseAmount(draft.budget, currency) ?? 0,
         });
       }
+      if (generalBudgetDirty && generalCategory && generalBudgetDraft !== null) {
+        await setYearlyBudget(generalCategory.id, generalBudgetDraft);
+      }
       setDrafts([]);
+      setGeneralBudgetDraft(null);
       setError(null);
       await refresh();
     } catch (err) {
@@ -197,7 +219,16 @@ export function Expenses() {
                     {category.is_system ? <span className="badge">system</span> : null}
                   </td>
                   <td className={styles.num}>
-                    {formatMoney(category.yearly_budget_amount, currency)}
+                    {category.is_system ? (
+                      <MoneyInput
+                        value={generalBudgetDraft ?? category.yearly_budget_amount}
+                        currency={currency}
+                        onChange={setGeneralBudgetDraft}
+                        ariaLabel="General yearly budget"
+                      />
+                    ) : (
+                      formatMoney(category.yearly_budget_amount, currency)
+                    )}
                   </td>
                   <td className={styles.num}>{formatMoney(category.used_amount, currency)}</td>
                   <td className={styles.actionCol}>
@@ -263,7 +294,11 @@ export function Expenses() {
       {error ? <div className={styles.error}>{error}</div> : null}
 
       <div className={styles.footer}>
-        <button type="submit" className="btn btn-primary" disabled={drafts.length === 0}>
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={drafts.length === 0 && !generalBudgetDirty}
+        >
           Save
         </button>
       </div>

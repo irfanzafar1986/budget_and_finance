@@ -22,13 +22,15 @@ export interface ParsedBulkUpload {
 }
 
 export function buildBalanceTemplateCsv(assets: AssetAccount[], currency: string): string {
-  const rows = assets.map((asset) => ({
-    asset_id: asset.id,
-    name: asset.name,
-    asset_type: asset.asset_type,
-    balance: minorToDecimalString(asset.current_balance, currency),
-  }));
-  return Papa.unparse(rows, { columns: ['asset_id', 'name', 'asset_type', 'balance'] });
+  const data = assets.map((asset) => [
+    asset.id,
+    asset.name,
+    asset.asset_type,
+    minorToDecimalString(asset.current_balance, currency),
+  ]);
+  // {fields, data} form always emits the header row, even when data is empty
+  // (papaparse's columns option drops headers if the rows array is empty).
+  return Papa.unparse({ fields: [...REQUIRED_HEADERS], data });
 }
 
 export function parseBalanceCsv(
