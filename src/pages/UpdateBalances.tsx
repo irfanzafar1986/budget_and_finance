@@ -5,10 +5,12 @@ import { createAsset, listAssets, setActive } from '../db/repos/asset';
 import { latestPeriod, saveBalanceUpdatePeriod } from '../db/repos/period';
 import { useAsyncQuery } from '../lib/useAsyncQuery';
 import { Card } from '../components/Card';
+import { BulkUploadBalancesModal } from '../components/BulkUploadBalancesModal';
 import { formatAmount, parseAmount } from '../utils/money';
 import { isIsoDate, todayIso } from '../utils/dates';
 import { validateAmountAllowNegative, validateName } from '../domain/validation';
 import type { AssetAccount } from '../domain/types';
+import type { ParsedBulkUpload } from '../utils/csv';
 import styles from './UpdateBalances.module.css';
 
 const ASSET_TYPE_HINT = 'Cash, Bank, Savings, Investment, Property, Receivable';
@@ -37,6 +39,7 @@ export function UpdateBalances() {
   const [assetValues, setAssetValues] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const assets = useAsyncQuery<AssetAccount[]>(
     () => (profile ? listAssets(profile.id, false) : Promise.resolve([])),
@@ -245,6 +248,34 @@ export function UpdateBalances() {
     }
   }
 
+  function applyBulk({ matched, newDrafts: incoming }: ParsedBulkUpload) {
+    setAssetValues((prev) => {
+      const next = { ...prev };
+      for (const { assetId, balance } of matched) {
+        next[assetId] = formatAmount(balance, currency);
+      }
+      return next;
+    });
+    if (incoming.length > 0) {
+      setDrafts((prev) => [
+        ...prev,
+        ...incoming.map((d, i) => ({
+          id: Date.now() + i,
+          name: d.name,
+          assetType: d.assetType,
+          value: d.value,
+        })),
+      ]);
+    }
+    const matchedCount = matched.length;
+    const draftCount = incoming.length;
+    const parts: string[] = [];
+    if (matchedCount > 0) parts.push(`${matchedCount} balance${matchedCount !== 1 ? 's' : ''} updated`);
+    if (draftCount > 0) parts.push(`${draftCount} new asset${draftCount !== 1 ? 's' : ''} added`);
+    setNotice(`Loaded from CSV: ${parts.join(', ')}. Review and click Save.`);
+    setError(null);
+  }
+
   return (
     <form className={styles.wrap} onSubmit={submit}>
       <header className={styles.header}>
@@ -256,12 +287,25 @@ export function UpdateBalances() {
         </div>
       </header>
 
+      <BulkUploadBalancesModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        assets={assets}
+        currency={currency}
+        onApply={applyBulk}
+      />
+
       <Card
         title="Assets"
         actions={
-          <button type="button" className="btn btn-sm" onClick={addDraftRow}>
-            + Add asset
-          </button>
+          <>
+            <button type="button" className="btn btn-sm" onClick={() => setBulkOpen(true)}>
+              Bulk upload
+            </button>
+            <button type="button" className="btn btn-sm" onClick={addDraftRow}>
+              + Add asset
+            </button>
+          </>
         }
       >
         <div className={styles.tableWrap}>
