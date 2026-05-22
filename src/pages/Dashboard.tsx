@@ -1,4 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp, useCurrency } from '../state/AppContext';
 import { listAssets } from '../db/repos/asset';
 import { listIncomeForYear } from '../db/repos/income';
@@ -95,12 +96,20 @@ export function Dashboard() {
       }));
   }, [assets, snapshots]);
 
+  // Only show months up to today for the current year; full year for past years.
+  const today = new Date();
+  const monthsToShow =
+    year.year < today.getFullYear() ? 12
+    : year.year > today.getFullYear() ? 0
+    : today.getMonth() + 1;
+  const visibleMonths = MONTH_LABELS.slice(0, monthsToShow);
+
   // Net monthly total (signed, so liabilities subtract).
-  const monthlyTotals = new Array(12).fill(0).map((_, m) =>
+  const monthlyTotals = new Array(monthsToShow).fill(0).map((_, m) =>
     categorySeries.reduce((s, series) => s + (series.values[m] || 0), 0),
   );
   // Sum of positive segments per month — used for stacked-bar sizing.
-  const monthlyPositive = new Array(12).fill(0).map((_, m) =>
+  const monthlyPositive = new Array(monthsToShow).fill(0).map((_, m) =>
     categorySeries.reduce((s, series) => s + Math.max(0, series.values[m] || 0), 0),
   );
   const hasChartData = monthlyTotals.some((v) => v !== 0);
@@ -108,6 +117,11 @@ export function Dashboard() {
   const maxTotal = Math.max(1, ...monthlyPositive, ...monthlyTotals);
 
   const [activeBar, setActiveBar] = useState(lastNonZeroMonth);
+
+  // Periods that still need attention — surfaced until the user assigns them.
+  const pendingPeriods = periods.filter(
+    (p) => p.status === 'ready_to_assign' || p.status === 'needs_review',
+  );
   const initials = (profile?.name || 'User').trim().slice(0, 1).toUpperCase();
 
   // Gauge data
@@ -243,7 +257,7 @@ export function Dashboard() {
                     <span /><span /><span />
                   </div>
                   <div className={styles.bars}>
-                    {MONTH_LABELS.map((label, i) => {
+                    {visibleMonths.map((label, i) => {
                       const total = monthlyTotals[i];
                       const positive = monthlyPositive[i];
                       const stackHeightPct = positive > 0 ? Math.max(4, Math.round((positive / maxTotal) * 92)) : 0;
@@ -303,7 +317,7 @@ export function Dashboard() {
                         </button>
                       );
                     })}
-                    {hasChartData ? (
+                    {hasChartData && monthsToShow > 0 ? (
                       <svg
                         className={styles.trendLine}
                         viewBox="0 0 100 100"
@@ -313,7 +327,7 @@ export function Dashboard() {
                         <polyline
                           points={monthlyTotals
                             .map((v, i) => {
-                              const x = ((i + 0.5) / 12) * 100;
+                              const x = ((i + 0.5) / monthsToShow) * 100;
                               const y = 100 - Math.max(0, Math.min(100, (v / maxTotal) * 92));
                               return `${x.toFixed(2)},${y.toFixed(2)}`;
                             })
@@ -326,7 +340,7 @@ export function Dashboard() {
                           vectorEffect="non-scaling-stroke"
                         />
                         {monthlyTotals.map((v, i) => {
-                          const x = ((i + 0.5) / 12) * 100;
+                          const x = ((i + 0.5) / monthsToShow) * 100;
                           const y = 100 - Math.max(0, Math.min(100, (v / maxTotal) * 92));
                           return (
                             <circle
@@ -343,7 +357,7 @@ export function Dashboard() {
                     ) : null}
                   </div>
                   <div className={styles.xAxis}>
-                    {MONTH_LABELS.map((m) => <span key={m}>{m}</span>)}
+                    {visibleMonths.map((m) => <span key={m}>{m}</span>)}
                   </div>
                 </div>
               </div>
@@ -351,6 +365,44 @@ export function Dashboard() {
               {!hasChartData ? <div className={styles.chartEmpty}>No balance history yet.</div> : null}
             </section>
           </section>
+
+          {pendingPeriods.length > 0 ? (
+            <section className={styles.pendingCard}>
+              <header className={styles.pendingHead}>
+                <div>
+                  <div className={styles.eyebrow}>Needs attention</div>
+                  <h3 className={styles.pendingTitle}>
+                    {pendingPeriods.length} balance update{pendingPeriods.length === 1 ? '' : 's'} waiting to be assigned
+                  </h3>
+                </div>
+              </header>
+              <ul className={styles.pendingList}>
+                {pendingPeriods.map((p) => {
+                  const reviewing = p.status === 'needs_review';
+                  return (
+                    <li key={p.id} className={styles.pendingItem}>
+                      <div className={styles.pendingMeta}>
+                        <div className={styles.pendingRange}>
+                          {p.start_date} → {p.end_date}
+                        </div>
+                        <div
+                          className={`${styles.pendingTag} ${reviewing ? styles.pendingTagWarn : styles.pendingTagInfo}`}
+                        >
+                          {reviewing ? 'Needs review' : 'Ready to assign'}
+                        </div>
+                      </div>
+                      <div className={styles.pendingAmount}>
+                        {formatMoney(p.calculated_expenses, currency)}
+                      </div>
+                      <Link to={`/period/${p.id}/assign`} className={styles.pendingAction}>
+                        Assign →
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
 
           <section className={styles.gaugeRow}>
             <article className={`${styles.gaugeCard} ${styles.gaugeIncome}`}>
