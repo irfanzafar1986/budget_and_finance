@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { createProfile } from '../db/repos/userProfile';
 import { createYearWithGeneral } from '../db/repos/budgetYear';
@@ -7,7 +7,7 @@ import { validateName, validateYear, validateCurrency } from '../domain/validati
 import styles from './Setup.module.css';
 
 export function Setup() {
-  const { profile, year, refresh } = useApp();
+  const { ready, profile, year, refresh } = useApp();
   const navigate = useNavigate();
 
   const thisYear = new Date().getFullYear();
@@ -16,6 +16,13 @@ export function Setup() {
   const [currency, setCurrency] = useState(year?.currency ?? profile?.default_currency ?? 'USD');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  if (!ready) {
+    return (
+      <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading…</div>
+    );
+  }
+  if (year) return <Navigate to="/" replace />;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

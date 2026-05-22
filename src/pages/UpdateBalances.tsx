@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useApp, useCurrency } from '../state/AppContext';
 import { createAsset, listAssets, setActive } from '../db/repos/asset';
 import { latestPeriod, saveBalanceUpdatePeriod } from '../db/repos/period';
+import { listIncomeSources } from '../db/repos/income';
+import type { IncomeSource } from '../domain/types';
 import { useAsyncQuery } from '../lib/useAsyncQuery';
 import { Card } from '../components/Card';
 import { BulkUploadBalancesModal } from '../components/BulkUploadBalancesModal';
@@ -42,8 +44,14 @@ export function UpdateBalances() {
   const [bulkOpen, setBulkOpen] = useState(false);
 
   const assets = useAsyncQuery<AssetAccount[]>(
-    () => (profile ? listAssets(profile.id, false) : Promise.resolve([])),
+    () => (profile ? listAssets(profile.id, true) : Promise.resolve([])),
     [profile?.id, revision],
+    [],
+  );
+
+  const incomeSources = useAsyncQuery<IncomeSource[]>(
+    () => (year ? listIncomeSources(year.id) : Promise.resolve([])),
+    [year?.id],
     [],
   );
 
@@ -118,11 +126,6 @@ export function UpdateBalances() {
   async function deactivateAsset(id: number) {
     try {
       await setActive(id, false);
-      setAssetValues((values) => {
-        const next = { ...values };
-        delete next[id];
-        return next;
-      });
       setError(null);
       setNotice('Asset removed from active tracking. Historical periods remain intact.');
       await refresh();
@@ -131,10 +134,22 @@ export function UpdateBalances() {
     }
   }
 
+  async function reactivateAsset(id: number) {
+    try {
+      await setActive(id, true);
+      setError(null);
+      setNotice('Asset reactivated. Its value will be included in the next balance update.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reactivate asset.');
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
 
-    const parsedExisting = assets.map((asset) => {
+    const activeAssets = assets.filter((a) => a.is_active);
+    const parsedExisting = activeAssets.map((asset) => {
       const parsed = parseAmount(assetValues[asset.id] ?? '', currency);
       return { asset, parsed };
     });
@@ -195,13 +210,13 @@ export function UpdateBalances() {
         createdAssets.push({ id: asset.id, balance: openingBalance });
       }
 
-      if (assets.length > 0) {
+      if (activeAssets.length > 0) {
         const endDate = todayIso();
         const lastPeriod = await latestPeriod(yearId);
         const startDate = lastPeriod?.end_date ?? `${budgetYear}-01-01`;
 
         const previousTotalAssets =
-          assets.reduce((sum, asset) => sum + asset.current_balance, 0) +
+          activeAssets.reduce((sum, asset) => sum + asset.current_balance, 0) +
           createdAssets.reduce((sum, asset) => sum + asset.balance, 0);
         const existingBalances = parsedExisting.map(({ asset, parsed }) => ({
           assetId: asset.id,
@@ -235,7 +250,7 @@ export function UpdateBalances() {
         );
       }
 
-      if (assets.length === 0 && createdAssets.length > 0) {
+      if (activeAssets.length === 0 && createdAssets.length > 0) {
         setNotice('Assets saved. Update balances again later to calculate expenses.');
       }
 
@@ -327,8 +342,13 @@ export function UpdateBalances() {
                 </tr>
               ) : null}
               {assets.map((asset) => (
-                <tr key={asset.id}>
-                  <td>{asset.name}</td>
+                <tr key={asset.id} className={asset.is_active ? '' : styles.inactiveRow}>
+                  <td>
+                    {asset.name}
+                    {asset.is_active ? null : (
+                      <span className={styles.inactiveTag}>inactive</span>
+                    )}
+                  </td>
                   <td>{asset.asset_type}</td>
                   <td>
                     <input
@@ -343,19 +363,32 @@ export function UpdateBalances() {
                           [asset.id]: event.target.value,
                         }))
                       }
+                      disabled={!asset.is_active}
                       aria-label={`${asset.name} value`}
                     />
                   </td>
                   <td className={styles.actionCol}>
-                    <button
-                      type="button"
-                      className={styles.iconButton}
-                      onClick={() => void deactivateAsset(asset.id)}
-                      aria-label={`Remove ${asset.name}`}
-                      title="Remove asset"
-                    >
-                      -
-                    </button>
+                    {asset.is_active ? (
+                      <button
+                        type="button"
+                        className={styles.iconButton}
+                        onClick={() => void deactivateAsset(asset.id)}
+                        aria-label={`Remove ${asset.name}`}
+                        title="Remove asset"
+                      >
+                        -
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.iconButton}
+                        onClick={() => void reactivateAsset(asset.id)}
+                        aria-label={`Reactivate ${asset.name}`}
+                        title="Reactivate asset"
+                      >
+                        +
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -454,16 +487,21 @@ export function UpdateBalances() {
               {incomeDrafts.map((draft, index) => (
                 <tr key={draft.id}>
                   <td>
-                    <input
+                    <select
                       className="input"
-                      type="text"
                       value={draft.sourceName}
                       onChange={(event) =>
                         updateIncomeDraft(draft.id, { sourceName: event.target.value })
                       }
-                      placeholder="Income source"
                       aria-label={`Income ${index + 1} source`}
-                    />
+                    >
+                      <option value="">Select source…</option>
+                      {incomeSources.map((src) => (
+                        <option key={src.id} value={src.name}>
+                          {src.name}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td>
                     <input

@@ -45,6 +45,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!authReady) return;
+    setReady(false);
     let cancelled = false;
     void (async () => {
       await refresh();

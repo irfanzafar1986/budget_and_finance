@@ -59,39 +59,53 @@ export function Dashboard() {
   const ytdPct = openingTotal !== 0 ? (ytdDelta / Math.abs(openingTotal)) * 100 : 0;
   const deltaPositive = ytdDelta >= 0;
 
-  // Build per-asset, per-month month-end balances from snapshots.
-  // monthlyByAsset[assetId][monthIdx] = balance at the end of that month.
-  const monthlyByAsset = useMemo(() => {
-    const map = new Map<number, number[]>();
-    for (const a of assets) map.set(a.id, new Array(12).fill(0));
+  // Build per-asset, per-month month-end balances from snapshots, then
+  // aggregate by asset_type (category) so the chart shows Cash/Bank/etc.
+  // rather than individual accounts.
+  const categorySeries = useMemo(() => {
+    const perAsset = new Map<number, number[]>();
+    for (const a of assets) perAsset.set(a.id, new Array(12).fill(0));
     for (const snap of snapshots) {
       const m = parseInt(snap.snapshot_date.slice(5, 7), 10) - 1;
       if (m < 0 || m > 11) continue;
-      const arr = map.get(snap.asset_account_id);
+      const arr = perAsset.get(snap.asset_account_id);
       if (arr) arr[m] = snap.balance_amount;
     }
-    // Forward-fill: if a month is missing, carry the prior month forward.
-    for (const arr of map.values()) {
+    for (const arr of perAsset.values()) {
       for (let i = 1; i < arr.length; i++) {
         if (arr[i] === 0 && arr[i - 1] !== 0) arr[i] = arr[i - 1];
       }
     }
-    return map;
+
+    const byCategory = new Map<string, number[]>();
+    for (const a of assets) {
+      const key = a.asset_type?.trim() || 'Other';
+      const values = perAsset.get(a.id) ?? new Array(12).fill(0);
+      const acc = byCategory.get(key) ?? new Array(12).fill(0);
+      for (let i = 0; i < 12; i++) acc[i] += values[i];
+      byCategory.set(key, acc);
+    }
+
+    return Array.from(byCategory.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([category, values], i) => ({
+        category,
+        color: ASSET_COLORS[i % ASSET_COLORS.length],
+        values,
+      }));
   }, [assets, snapshots]);
 
-  const assetSeries = assets.map((a, i) => ({
-    asset: a,
-    color: ASSET_COLORS[i % ASSET_COLORS.length],
-    values: monthlyByAsset.get(a.id) ?? new Array(12).fill(0),
-  }));
-
-  // Stacked totals per month for max-axis sizing.
+  // Net monthly total (signed, so liabilities subtract).
   const monthlyTotals = new Array(12).fill(0).map((_, m) =>
-    assetSeries.reduce((s, series) => s + (series.values[m] || 0), 0),
+    categorySeries.reduce((s, series) => s + (series.values[m] || 0), 0),
   );
-  const hasChartData = monthlyTotals.some((v) => v > 0);
-  const lastNonZeroMonth = monthlyTotals.reduce((best, v, i) => (v > 0 ? i : best), 0);
-  const maxTotal = Math.max(1, ...monthlyTotals);
+  // Sum of positive segments per month — used for stacked-bar sizing.
+  const monthlyPositive = new Array(12).fill(0).map((_, m) =>
+    categorySeries.reduce((s, series) => s + Math.max(0, series.values[m] || 0), 0),
+  );
+  const hasChartData = monthlyTotals.some((v) => v !== 0);
+  const lastNonZeroMonth = monthlyTotals.reduce((best, v, i) => (v !== 0 ? i : best), 0);
+  const maxTotal = Math.max(1, ...monthlyPositive, ...monthlyTotals);
 
   const [activeBar, setActiveBar] = useState(lastNonZeroMonth);
   const initials = (profile?.name || 'User').trim().slice(0, 1).toUpperCase();
@@ -203,15 +217,19 @@ export function Dashboard() {
               </div>
 
               <ul className={styles.legend}>
-                {assetSeries.map(({ asset, color }) => (
-                  <li key={asset.id} className={styles.legendItem}>
+                {categorySeries.map(({ category, color }) => (
+                  <li key={category} className={styles.legendItem}>
                     <span
                       className={styles.legendSwatch}
                       style={{ background: `linear-gradient(180deg, ${color.stop1}, ${color.stop2})` } as CSSProperties}
                     />
-                    <span className={styles.legendLabel}>{asset.name}</span>
+                    <span className={styles.legendLabel}>{category}</span>
                   </li>
                 ))}
+                <li className={styles.legendItem}>
+                  <span className={styles.legendLine} aria-hidden />
+                  <span className={styles.legendLabel}>Net worth</span>
+                </li>
               </ul>
 
               <div className={styles.chartWrap}>
@@ -227,7 +245,8 @@ export function Dashboard() {
                   <div className={styles.bars}>
                     {MONTH_LABELS.map((label, i) => {
                       const total = monthlyTotals[i];
-                      const totalHeightPct = total > 0 ? Math.max(4, Math.round((total / maxTotal) * 92)) : 0;
+                      const positive = monthlyPositive[i];
+                      const stackHeightPct = positive > 0 ? Math.max(4, Math.round((positive / maxTotal) * 92)) : 0;
                       const isActive = i === activeBar;
                       return (
                         <button
@@ -238,21 +257,21 @@ export function Dashboard() {
                           className={`${styles.barCol} ${isActive ? styles.barColActive : ''}`}
                           aria-label={`${label}: ${formatMoney(total, currency)}`}
                         >
-                          {isActive && total > 0 ? (
+                          {isActive && (positive > 0 || total !== 0) ? (
                             <div className={styles.tooltip} role="tooltip">
-                              <div className={styles.tooltipLabel}>{label} · Total</div>
+                              <div className={styles.tooltipLabel}>{label} · Net worth</div>
                               <div className={styles.tooltipValue}>{formatMoney(total, currency)}</div>
                               <ul className={styles.tooltipBreakdown}>
-                                {assetSeries.map(({ asset, color, values }) => {
+                                {categorySeries.map(({ category, color, values }) => {
                                   const v = values[i];
                                   if (!v) return null;
                                   return (
-                                    <li key={asset.id}>
+                                    <li key={category}>
                                       <span
                                         className={styles.tooltipDot}
                                         style={{ background: `linear-gradient(180deg, ${color.stop1}, ${color.stop2})` } as CSSProperties}
                                       />
-                                      <span className={styles.tooltipName}>{asset.name}</span>
+                                      <span className={styles.tooltipName}>{category}</span>
                                       <span className={styles.tooltipNum}>{formatMoney(v, currency)}</span>
                                     </li>
                                   );
@@ -263,15 +282,15 @@ export function Dashboard() {
                           ) : null}
                           <div
                             className={styles.stack}
-                            style={{ height: `${totalHeightPct}%` } as CSSProperties}
+                            style={{ height: `${stackHeightPct}%` } as CSSProperties}
                           >
-                            {assetSeries.map(({ asset, color, values }) => {
+                            {categorySeries.map(({ category, color, values }) => {
                               const v = values[i];
-                              if (!v || total === 0) return null;
-                              const seg = (v / total) * 100;
+                              if (!v || v < 0 || positive === 0) return null;
+                              const seg = (v / positive) * 100;
                               return (
                                 <span
-                                  key={asset.id}
+                                  key={category}
                                   className={styles.stackSeg}
                                   style={{
                                     height: `${seg}%`,
@@ -284,6 +303,44 @@ export function Dashboard() {
                         </button>
                       );
                     })}
+                    {hasChartData ? (
+                      <svg
+                        className={styles.trendLine}
+                        viewBox="0 0 100 100"
+                        preserveAspectRatio="none"
+                        aria-hidden
+                      >
+                        <polyline
+                          points={monthlyTotals
+                            .map((v, i) => {
+                              const x = ((i + 0.5) / 12) * 100;
+                              const y = 100 - Math.max(0, Math.min(100, (v / maxTotal) * 92));
+                              return `${x.toFixed(2)},${y.toFixed(2)}`;
+                            })
+                            .join(' ')}
+                          fill="none"
+                          stroke="#fbbf24"
+                          strokeWidth="0.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                        {monthlyTotals.map((v, i) => {
+                          const x = ((i + 0.5) / 12) * 100;
+                          const y = 100 - Math.max(0, Math.min(100, (v / maxTotal) * 92));
+                          return (
+                            <circle
+                              key={i}
+                              cx={x}
+                              cy={y}
+                              r="0.6"
+                              fill="#fbbf24"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          );
+                        })}
+                      </svg>
+                    ) : null}
                   </div>
                   <div className={styles.xAxis}>
                     {MONTH_LABELS.map((m) => <span key={m}>{m}</span>)}
