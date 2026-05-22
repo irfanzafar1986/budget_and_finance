@@ -3,13 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useApp, useCurrency } from '../state/AppContext';
 import { createAsset, listAssets, setActive } from '../db/repos/asset';
 import { latestPeriod, saveBalanceUpdatePeriod } from '../db/repos/period';
-import { listIncomeSources } from '../db/repos/income';
-import type { IncomeSource } from '../domain/types';
 import { useAsyncQuery } from '../lib/useAsyncQuery';
 import { Card } from '../components/Card';
 import { BulkUploadBalancesModal } from '../components/BulkUploadBalancesModal';
-import { formatAmountPlain, parseAmount } from '../utils/money';
-import { isIsoDate, todayIso } from '../utils/dates';
+import { formatAmount, formatAmountPlain, parseAmount } from '../utils/money';
+import { todayIso } from '../utils/dates';
 import { validateAmountAllowNegative, validateName } from '../domain/validation';
 import type { AssetAccount } from '../domain/types';
 import type { ParsedBulkUpload } from '../utils/csv';
@@ -24,12 +22,12 @@ interface DraftAsset {
   value: string;
 }
 
-interface DraftIncome {
-  id: number;
-  sourceName: string;
-  amount: string;
-  incomeDate: string;
-  note: string;
+interface AssetDiff {
+  assetId: number;
+  name: string;
+  previous: number;
+  current: number;
+  delta: number;
 }
 
 export function UpdateBalances() {
@@ -37,21 +35,15 @@ export function UpdateBalances() {
   const currency = useCurrency();
   const navigate = useNavigate();
   const [drafts, setDrafts] = useState<DraftAsset[]>([]);
-  const [incomeDrafts, setIncomeDrafts] = useState<DraftIncome[]>([]);
   const [assetValues, setAssetValues] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
 
   const assets = useAsyncQuery<AssetAccount[]>(
     () => (profile ? listAssets(profile.id, true) : Promise.resolve([])),
     [profile?.id, revision],
-    [],
-  );
-
-  const incomeSources = useAsyncQuery<IncomeSource[]>(
-    () => (year ? listIncomeSources(year.id) : Promise.resolve([])),
-    [year?.id],
     [],
   );
 
@@ -96,33 +88,6 @@ export function UpdateBalances() {
     setNotice(null);
   }
 
-  function addIncomeRow() {
-    setIncomeDrafts((rows) => [
-      ...rows,
-      {
-        id: Date.now() + rows.length,
-        sourceName: '',
-        amount: '',
-        incomeDate: todayIso(),
-        note: '',
-      },
-    ]);
-    setError(null);
-    setNotice(null);
-  }
-
-  function updateIncomeDraft(id: number, patch: Partial<DraftIncome>) {
-    setIncomeDrafts((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-    );
-  }
-
-  function removeIncomeRow(id: number) {
-    setIncomeDrafts((rows) => rows.filter((row) => row.id !== id));
-    setError(null);
-    setNotice(null);
-  }
-
   async function deactivateAsset(id: number) {
     try {
       await setActive(id, false);
@@ -143,6 +108,26 @@ export function UpdateBalances() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not reactivate asset.');
     }
+  }
+
+  function computeDiffs(): AssetDiff[] {
+    const diffs: AssetDiff[] = [];
+    for (const asset of assets) {
+      if (!asset.is_active) continue;
+      const parsed = parseAmount(assetValues[asset.id] ?? '', currency);
+      if (parsed === null) continue;
+      const delta = parsed - asset.current_balance;
+      if (delta === 0) continue;
+      diffs.push({
+        assetId: asset.id,
+        name: asset.name,
+        previous: asset.current_balance,
+        current: parsed,
+        delta,
+      });
+    }
+    diffs.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    return diffs;
   }
 
   async function submit(event: FormEvent) {
@@ -173,28 +158,6 @@ export function UpdateBalances() {
 
       const amountCheck = validateAmountAllowNegative(parsed, `${rowLabel} value`);
       if (!amountCheck.ok) return setError(amountCheck.message);
-    }
-
-    const income = [];
-    for (const [index, draft] of incomeDrafts.entries()) {
-      const rowLabel = `Income row ${index + 1}`;
-      const nameCheck = validateName(draft.sourceName, `${rowLabel} source`);
-      if (!nameCheck.ok) return setError(nameCheck.message);
-
-      const parsed = parseAmount(draft.amount, currency);
-      if (parsed === null) return setError(`${rowLabel} amount must be a valid number.`);
-
-      const amountCheck = validateAmountAllowNegative(parsed, `${rowLabel} amount`);
-      if (!amountCheck.ok) return setError(amountCheck.message);
-
-      if (!isIsoDate(draft.incomeDate)) return setError(`${rowLabel} date must be valid.`);
-
-      income.push({
-        sourceName: draft.sourceName,
-        amount: parsed,
-        incomeDate: draft.incomeDate,
-        note: draft.note,
-      });
     }
 
     try {
@@ -234,7 +197,7 @@ export function UpdateBalances() {
           previousTotalAssets,
           currentTotalAssets,
           balances: allBalances,
-          income,
+          income: [],
         });
 
         await refresh();
@@ -255,8 +218,8 @@ export function UpdateBalances() {
       }
 
       setDrafts([]);
-      setIncomeDrafts([]);
       setError(null);
+      setShowDiff(false);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save assets.');
@@ -291,6 +254,9 @@ export function UpdateBalances() {
     setError(null);
   }
 
+  const diffs = showDiff ? computeDiffs() : [];
+  const totalDelta = diffs.reduce((s, d) => s + d.delta, 0);
+
   return (
     <form className={styles.wrap} onSubmit={submit}>
       <header className={styles.header}>
@@ -314,6 +280,13 @@ export function UpdateBalances() {
         title="Assets"
         actions={
           <>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setShowDiff((v) => !v)}
+            >
+              {showDiff ? 'Hide changes' : 'Show changes vs last update'}
+            </button>
             <button type="button" className="btn btn-sm" onClick={() => setBulkOpen(true)}>
               Bulk upload
             </button>
@@ -323,6 +296,56 @@ export function UpdateBalances() {
           </>
         }
       >
+        {showDiff ? (
+          <div className={styles.diffPanel}>
+            {diffs.length === 0 ? (
+              <div className={styles.diffEmpty}>
+                No changes vs last update. Edit a value above to see the difference.
+              </div>
+            ) : (
+              <>
+                <table className={styles.diffTable}>
+                  <thead>
+                    <tr>
+                      <th>Asset</th>
+                      <th className={styles.num}>Previous</th>
+                      <th className={styles.num}>New</th>
+                      <th className={styles.num}>Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {diffs.map((d) => {
+                      const up = d.delta > 0;
+                      return (
+                        <tr key={d.assetId}>
+                          <td>{d.name}</td>
+                          <td className={styles.num}>{formatAmount(d.previous, currency)}</td>
+                          <td className={styles.num}>{formatAmount(d.current, currency)}</td>
+                          <td className={`${styles.num} ${up ? styles.diffUp : styles.diffDown}`}>
+                            {up ? '▲ +' : '▼ '}
+                            {formatAmount(d.delta, currency)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3} className={styles.diffTotalLabel}>Net change</td>
+                      <td
+                        className={`${styles.num} ${totalDelta >= 0 ? styles.diffUp : styles.diffDown}`}
+                      >
+                        {totalDelta > 0 ? '+' : ''}
+                        {formatAmount(totalDelta, currency)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </>
+            )}
+          </div>
+        ) : null}
+
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -453,109 +476,6 @@ export function UpdateBalances() {
             <option value="Property" />
             <option value="Receivable" />
           </datalist>
-        </div>
-      </Card>
-
-      <Card
-        title="Income for this update"
-        subtitle="Add income received during this balance period."
-        actions={
-          <button type="button" className="btn btn-sm" onClick={addIncomeRow}>
-            + Add income
-          </button>
-        }
-      >
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th className={styles.num}>Amount</th>
-                <th>Date</th>
-                <th>Note</th>
-                <th className={styles.actionCol}>-</th>
-              </tr>
-            </thead>
-            <tbody>
-              {incomeDrafts.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className={styles.empty}>
-                    No income added for this update.
-                  </td>
-                </tr>
-              ) : null}
-              {incomeDrafts.map((draft, index) => (
-                <tr key={draft.id}>
-                  <td>
-                    <select
-                      className="input"
-                      value={draft.sourceName}
-                      onChange={(event) =>
-                        updateIncomeDraft(draft.id, { sourceName: event.target.value })
-                      }
-                      aria-label={`Income ${index + 1} source`}
-                    >
-                      <option value="">Select source…</option>
-                      {incomeSources.map((src) => (
-                        <option key={src.id} value={src.name}>
-                          {src.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      className={`input ${styles.valueInput}`}
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.01"
-                      value={draft.amount}
-                      onChange={(event) =>
-                        updateIncomeDraft(draft.id, { amount: event.target.value })
-                      }
-                      placeholder="0.00"
-                      aria-label={`Income ${index + 1} amount`}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="input"
-                      type="date"
-                      value={draft.incomeDate}
-                      onChange={(event) =>
-                        updateIncomeDraft(draft.id, { incomeDate: event.target.value })
-                      }
-                      aria-label={`Income ${index + 1} date`}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="input"
-                      type="text"
-                      value={draft.note}
-                      onChange={(event) =>
-                        updateIncomeDraft(draft.id, { note: event.target.value })
-                      }
-                      placeholder="Optional"
-                      aria-label={`Income ${index + 1} note`}
-                    />
-                  </td>
-                  <td className={styles.actionCol}>
-                    <button
-                      type="button"
-                      className={styles.iconButton}
-                      onClick={() => removeIncomeRow(draft.id)}
-                      aria-label={`Remove income row ${index + 1}`}
-                      title="Remove row"
-                    >
-                      -
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </Card>
 
