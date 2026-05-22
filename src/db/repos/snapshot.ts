@@ -12,33 +12,49 @@ export async function listSnapshotsForPeriod(periodId: number): Promise<BalanceS
 }
 
 /**
- * For each asset, return the balance from the period BEFORE the most recent
- * one. Lets "Show changes vs last update" diff the current state against the
- * baseline the latest update started from, rather than against itself.
+ * For each asset, return the balance saved in the period BEFORE the most
+ * recent one. Two queries total (no N+1): one to identify the previous
+ * period by id, one to fetch its snapshots.
  *
- * Falls back to the asset's opening_balance when no prior snapshot exists.
- * Ordering uses (snapshot_date DESC, id DESC) so multiple updates on the same
- * calendar date stay disambiguated by row id.
+ * Falls back to opening_balance when there is no prior period (only one
+ * update saved ever) or when an asset didn't have a snapshot in that
+ * period (created after it).
  */
 export async function previousUpdateBalances(
+  yearId: number,
   assets: AssetAccount[],
 ): Promise<Map<number, number>> {
   const result = new Map<number, number>();
-  for (const asset of assets) {
-    const { data, error } = await supabase
+  if (assets.length === 0) return result;
+
+  const { data: periodRows, error: pErr } = await supabase
+    .from('period')
+    .select('id')
+    .eq('budget_year_id', yearId)
+    .order('end_date', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(2);
+  if (pErr) throw pErr;
+  const periods = (periodRows ?? []) as { id: number }[];
+
+  let snapshotByAsset = new Map<number, number>();
+  if (periods.length >= 2) {
+    const previousPeriodId = periods[1].id;
+    const { data: snaps, error: sErr } = await supabase
       .from('balance_snapshot')
-      .select('balance_amount')
-      .eq('asset_account_id', asset.id)
-      .order('snapshot_date', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(2);
-    if (error) throw error;
-    const rows = (data ?? []) as { balance_amount: number }[];
-    if (rows.length >= 2) {
-      result.set(asset.id, Number(rows[1].balance_amount));
-    } else {
-      result.set(asset.id, asset.opening_balance);
-    }
+      .select('asset_account_id, balance_amount')
+      .eq('period_id', previousPeriodId);
+    if (sErr) throw sErr;
+    snapshotByAsset = new Map(
+      ((snaps ?? []) as { asset_account_id: number; balance_amount: number }[]).map(
+        (s) => [s.asset_account_id, Number(s.balance_amount)],
+      ),
+    );
+  }
+
+  for (const asset of assets) {
+    const baseline = snapshotByAsset.get(asset.id);
+    result.set(asset.id, baseline ?? asset.opening_balance);
   }
   return result;
 }

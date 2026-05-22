@@ -49,8 +49,11 @@ export function UpdateBalances() {
   );
 
   const previousBalances = useAsyncQuery<Map<number, number>>(
-    () => (assets.length > 0 ? previousUpdateBalances(assets) : Promise.resolve(new Map())),
-    [assets, revision],
+    () =>
+      year && assets.length > 0
+        ? previousUpdateBalances(year.id, assets)
+        : Promise.resolve(new Map()),
+    [year?.id, assets, revision],
     new Map(),
   );
 
