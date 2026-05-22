@@ -8,7 +8,7 @@ import type { IncomeSource } from '../domain/types';
 import { useAsyncQuery } from '../lib/useAsyncQuery';
 import { Card } from '../components/Card';
 import { BulkUploadBalancesModal } from '../components/BulkUploadBalancesModal';
-import { formatAmount, parseAmount } from '../utils/money';
+import { formatAmountPlain, parseAmount } from '../utils/money';
 import { isIsoDate, todayIso } from '../utils/dates';
 import { validateAmountAllowNegative, validateName } from '../domain/validation';
 import type { AssetAccount } from '../domain/types';
@@ -59,7 +59,7 @@ export function UpdateBalances() {
     setAssetValues((current) => {
       const next: Record<number, string> = {};
       for (const asset of assets) {
-        next[asset.id] = current[asset.id] ?? formatAmount(asset.current_balance, currency);
+        next[asset.id] = current[asset.id] ?? formatAmountPlain(asset.current_balance, currency);
       }
       return next;
     });
@@ -267,7 +267,7 @@ export function UpdateBalances() {
     setAssetValues((prev) => {
       const next = { ...prev };
       for (const { assetId, balance } of matched) {
-        next[assetId] = formatAmount(balance, currency);
+        next[assetId] = formatAmountPlain(balance, currency);
       }
       return next;
     });

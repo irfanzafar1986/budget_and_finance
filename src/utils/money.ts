@@ -55,6 +55,24 @@ export function parseAmount(input: string, currency = 'USD'): number | null {
 }
 
 /**
+ * Plain decimal string without grouping separators. Suitable as the `value`
+ * of a native `<input type="number">`, which rejects strings containing
+ * commas and renders blank.
+ */
+export function formatAmountPlain(minor: number, currency = 'USD'): string {
+  if (!Number.isFinite(minor)) return '';
+  const decimals = decimalsForCurrency(currency);
+  const sign = minor < 0 ? '-' : '';
+  const abs = Math.abs(minor);
+  const factor = 10 ** decimals;
+  const whole = Math.floor(abs / factor);
+  const fraction = abs - whole * factor;
+  if (decimals === 0) return sign + String(whole);
+  const fractionString = String(fraction).padStart(decimals, '0');
+  return sign + String(whole) + '.' + fractionString;
+}
+
+/**
  * Format minor-unit value as a user-readable string. Adds grouping separators
  * but no currency symbol (caller decides where to place the symbol).
  */
