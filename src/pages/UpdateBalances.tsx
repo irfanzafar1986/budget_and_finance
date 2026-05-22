@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp, useCurrency } from '../state/AppContext';
 import { createAsset, listAssets, setActive } from '../db/repos/asset';
 import { latestPeriod, saveBalanceUpdatePeriod } from '../db/repos/period';
+import { previousUpdateBalances } from '../db/repos/snapshot';
 import { useAsyncQuery } from '../lib/useAsyncQuery';
 import { Card } from '../components/Card';
 import { BulkUploadBalancesModal } from '../components/BulkUploadBalancesModal';
@@ -45,6 +46,12 @@ export function UpdateBalances() {
     () => (profile ? listAssets(profile.id, true) : Promise.resolve([])),
     [profile?.id, revision],
     [],
+  );
+
+  const previousBalances = useAsyncQuery<Map<number, number>>(
+    () => (assets.length > 0 ? previousUpdateBalances(assets) : Promise.resolve(new Map())),
+    [assets, revision],
+    new Map(),
   );
 
   useEffect(() => {
@@ -115,14 +122,15 @@ export function UpdateBalances() {
     for (const asset of assets) {
       if (!asset.is_active) continue;
       const parsed = parseAmount(assetValues[asset.id] ?? '', currency);
-      if (parsed === null) continue;
-      const delta = parsed - asset.current_balance;
+      const current = parsed ?? asset.current_balance;
+      const previous = previousBalances.get(asset.id) ?? asset.opening_balance;
+      const delta = current - previous;
       if (delta === 0) continue;
       diffs.push({
         assetId: asset.id,
         name: asset.name,
-        previous: asset.current_balance,
-        current: parsed,
+        previous,
+        current,
         delta,
       });
     }
@@ -300,7 +308,7 @@ export function UpdateBalances() {
           <div className={styles.diffPanel}>
             {diffs.length === 0 ? (
               <div className={styles.diffEmpty}>
-                No changes vs last update. Edit a value above to see the difference.
+                No changes vs the previous update yet.
               </div>
             ) : (
               <>
